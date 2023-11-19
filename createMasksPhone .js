@@ -1,92 +1,139 @@
-function createMasksPhone() {
+function initMasksPhone() {
+
+    const handler = {
+        get: function ( target, property ) {
+            if (property === "maskedPhone") return getMaskedPhone( target.value );
+            return target[ property ]
+        },
+        set: function ( target, property, value ) {
+            if( property === 'value' ) {
+                target[ property ] = getCleanPhone( value )
+            } else {
+                target[ property ] = value
+            }
             
-    function isNumber ( value ) {
-        return !isNaN( +value ) && value !== " "
+        },
     }
 
-    function getTemplateAtStartup( value ) {
-        if ( /[ 1-6, 9 ]/.test( +value ) ) {
-            return `+7 (${ value }__) ___-__-__`
-        } else {
-            return '+7 (___) ___-__-__'
+    const checkFirstNumber = firstNumber =>  [ 0, 7, 8 ].includes( +firstNumber )
+    const myBackspace = value => value.slice(0, -1)
+
+    function getCleanPhone ( value ) {
+        let cleanPhone = value.replace(/\D/g, '')
+
+        if( cleanPhone.length > 11 ) {
+            cleanPhone = cleanPhone.slice(0, -1)
         }
-    }
-    
-    function getUpdatedRow( currentCharacter ) {
-        const mask = Array.from( this.value )
-        const validation = isNumber( mask[ this.selectionStart ] ) || mask[ this.selectionStart ] === '_'
-        if ( validation && currentCharacter ) {
-            mask.splice( this.selectionStart, 1, currentCharacter )
+
+        if( checkFirstNumber( cleanPhone[ 0 ] ) ){
+            return cleanPhone.slice( 1 )
         }
-        return mask.join( "" )
+        return cleanPhone
     }
 
-    function setCursorPosition ( startPos ) {
-        const start = typeof startPos === "number" ? startPos : 0
-        const position = this.value.indexOf( '_', start )
+    function getMaskedPhone(value = '') {
+        let mask = Array.from("(___) ___-__-__")
+        for ( let i in value ) {
+            if (i == 0 && checkFirstNumber( value[ i ] ) ) continue
+            const position = mask.indexOf('_')
+            mask[ position ] = value[i]
+        }
+        return "+7 " + mask.join('')
+    }
+
+    function setCursorPosition() {
+        const position = this.value.indexOf('_')
         this.selectionStart = position > 0 ? position : this.value.length
         this.selectionEnd = this.selectionStart
     }
 
-    function navCursorWithArrows( entry ) {
-        switch ( entry ) {
-            case "ArrowLeft":
-                this.selectionStart--
-                break
-            case "ArrowRight":
-                this.selectionStart++
-                break
-        }
-        this.selectionEnd = this.selectionStart
+    function resetFieldValue ( target ) {
+        target.proxyTarget.resetFlag = false
+        target.value = ''
     }
 
-    function removingNumberFromString() {
-        let selection = this.selectionStart
-        let formClearingFlag
-        for ( let i = this.value.length - ( this.value.length - ( selection - 1 ) ); i >= 0; i-- ) {
-            if ( isNumber( this.value[i] ) ) {
-                const mask = Array.from( this.value )
-                mask.splice( i, 1, "_" )
-                this.value = mask.join( "" )
-                this.selectionStart = i
-                break
-            }
+    function updateFieldValue() {
+        if( !this.proxyTarget.resetFlag ) {
+            this.value = this.proxyTarget.maskedPhone
+            setCursorPosition.call(this)
+            return
         }
-        for ( i of this.value ) {
-            if ( isNumber( i ) ) {
-                formClearingFlag = false
-                break
-            }
-            formClearingFlag = true
-        }
-        if ( formClearingFlag ) this.value = ''
+        resetFieldValue( this )
     }
 
-    function createMask( event ) {
-        const entry = event.key
-        const currentCharacter = isNumber( entry ) && entry
-        const inputValue = this.value || currentCharacter || "+"
-        if ( isNumber( entry ) || entry === "+" ) {
-            if ( inputValue.length === 1 ) {
-                this.value = getTemplateAtStartup( inputValue )
-                setCursorPosition.call( this )
-            } else {
-                const currentСursorPosition = this.selectionStart
-                this.value = getUpdatedRow.call( this, currentCharacter )
-                setCursorPosition.call( this, currentСursorPosition )
-            }
-        } else if ( entry === "Backspace" ) {
-            removingNumberFromString.call( this )
-        }
-        navCursorWithArrows.call( this, entry ) 
-        event.preventDefault();
+    function createMask() {
+        this.proxyTarget.value = this.value
+        updateFieldValue.call( this )
     }
 
-    return function ( node ){
-        const nodes = node ? [ node ] : document.querySelectorAll( "input[type='tel']" )
-        nodes.forEach( elem => {
-            elem.addEventListener( 'keydown', createMask )
-            elem.addEventListener( 'focus', setCursorPosition )
-        })
+    function keydownProhibition( event ) {
+        const key = event.key
+        const banList = [
+            'Backspace',
+            'ArrowLeft',
+            'ArrowUp',
+            'ArrowDown',
+            'ArrowRight',
+        ]
+
+        if ( key === 'Backspace' ) {
+            this.proxyTarget.value = myBackspace( this.proxyTarget.value )
+            updateFieldValue.call( this )
+            this.dispatchEvent( new Event('input') )
+        }
+        if ( banList.includes( key ) ) event.preventDefault()
+    }
+
+    function myBlur() {
+        if (this.value === "+7 (___) ___-__-__") {
+            this.proxyTarget.resetFlag = true
+            this.dispatchEvent( new Event('input') )  
+        }
+    }
+
+    function myFocus() {
+        setTimeout( () => {
+            updateFieldValue.call( this )
+        } );
+    }
+
+    function myPaste ( event ) {
+        this.value = event.clipboardData?.getData('text')
+        this.dispatchEvent( new Event('input') ) 
+        event.preventDefault()
+    }
+
+    function nodeSearch ( inputData ) {
+        if ( typeof inputData === 'string') {
+            return document.querySelectorAll( inputData )
+        } else if ( inputData instanceof HTMLElement ) {
+            return [ inputData ]
+        } else if ( inputData instanceof NodeList ) {
+            return inputData 
+        }
+
+        return document.querySelectorAll( "input[type='tel']" )
+    }
+
+    return function ( inputData ) {
+        const elements = nodeSearch( inputData )
+        for ( let i = 0; i < elements.length; i++ ) {
+            const elem = elements[ i ];
+            if( elem.proxyTarget ) continue
+
+            elem.proxyTarget = new Proxy( {
+                value: '',
+                maskedPhone: '',
+                resetFlag: false
+            }, handler )
+            elem.setAttribute("autocomplete", "tel");
+            elem.removeAttribute('maxlength')
+            elem.addEventListener('keydown', keydownProhibition, { capture: true })
+            elem.addEventListener('input', createMask, { capture: true } )
+            elem.addEventListener('focus', myFocus, { capture: true } )
+            elem.addEventListener('click', setCursorPosition, { capture: true })
+            elem.addEventListener('blur', myBlur, { capture : true } )
+            elem.addEventListener('paste', myPaste )
+        }
     }
 }
