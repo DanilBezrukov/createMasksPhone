@@ -14,15 +14,16 @@
 ## Использование
 
 Инициализация маски.
+
+Маска примениться ко всем input type="tel"
 ```javascript
 
 	const createMasksPhone = initMasksPhone()
         createMasksPhone()
 
 ```
-Маска примениться ко всем input type="tel"
 
-Маску можно вызвать для конкретного элемента передав в качестве аргумента узел.
+Маску можно вызвать для конкретных элементов, передав в качестве аргумента селектор, NodeList или узел.
 ```javascript
 
 	createMasksPhone( node )
